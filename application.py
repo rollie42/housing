@@ -5,17 +5,11 @@ from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OneHotEncoder, LabelEncoder, StandardScaler
+from sklearn.preprocessing import OneHotEncoder, LabelEncoder, StandardScaler, PolynomialFeatures
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
-
-def isInt(value):
-  try:
-    int(value)
-    return True
-  except ValueError:
-    return False
+import joblib 
 
 def run():    
     housing_data = pd.read_csv("Housing_data.csv")
@@ -43,19 +37,57 @@ def run():
         ]
     )
 
-    cls = LogisticRegression(solver='sag', n_jobs=4)
+    # cls = LogisticRegression(solver='sag', n_jobs=4) # slow
     cls = LinearRegression()
-    cls = RandomForestRegressor()
+    # cls = RandomForestRegressor() # slow
     clf = Pipeline(
-        steps=[("preprocessor", preprocessor), ("classifier", cls)]
+        steps=[
+            ("preprocessor", preprocessor), 
+            ("poly", PolynomialFeatures(degree=2)), # this increases score from ~.2 to ~.42; degree=3 fails due to memory requirement. takes a few mins
+            ("classifier", cls),
+        ]
     )
 
-    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size = 0.2, random_state = 42)
+    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size = 0.1, random_state = 15)
     clf.fit(x_train, y_train)
-    print("model score: %.3f" % clf.score(x_test, y_test))
     
-run()
+    print("model score: %.3f" % clf.score(x_test, y_test))
 
+    joblib.dump(clf, f"model.joblib")    
+
+def test():
+    clf = joblib.load(f'model.joblib')
+    cities = ['Kachidoki', 'Shibuya', 'Seijogakuenmae', 'Monzennakacho', 'Iwamotocho', 'Kamiitabashi', 'Roppongi']
+
+    for city in cities:
+        d = {
+            'NearestStation': [city],
+            'TimeToNearestStation': [10],
+            'Area': [80],
+            'BuildingYear': [2010],
+            'Year': [2020],
+            'Type': ['"Pre-owned Condominiums, etc."'],
+            'FloorPlan': ['3LDK'], 
+            'Renovation': ['Not yet'],
+        }
+        df = pd.DataFrame(data=d)
+        df
+        p = clf.predict(df)
+        print(f'{city}: {p/100000}')
+
+    # The above gives the following output, which should represent the cost of housing
+    # in each of the cities. But...it's clearly not correct, nor accurate even
+    # relative to each other (e.g., Shibuya should not be cheaper than Seijogakuenmae)        
+    #   Kachidoki: [-1673.41200719]
+    #   Shibuya: [454.42983849]
+    #   Seijogakuenmae: [793.22483103]
+    #   Monzennakacho: [999.29303348]
+    #   Iwamotocho: [1250.53065929]
+    #   Kamiitabashi: [806.85889658]
+    #   Roppongi: [751.41300991]
+    
+#run()
+test()
 
 
 
